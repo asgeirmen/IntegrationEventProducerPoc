@@ -68,8 +68,8 @@ The results from this query is a table with the same columns as `usr.transaction
 The `__$start_lsn` column for the last raw can be used as the from pointer in the next call to `cdc.fn_cdc_get_all_changes_usr_transactions`.
 
 ## Customer events, Debezium and Outbox pattern
-Debezium is an open source distributed platform for change data capture., built on top of Apache Kafka. It has a [connector for SQL server](https://debezium.io/documentation/reference/1.4/connectors/sqlserver.html)
-that makes use of CDC in a similar way as this POC. I recommend this video to understand  Debezium: 
+Debezium is an open source distributed platform for change data capture, built on top of Apache Kafka. It has a [connector for SQL server](https://debezium.io/documentation/reference/1.4/connectors/sqlserver.html)
+that makes use of CDC in a similar way as this POC. I recommend this video to understand Debezium: 
 [Practical Change Data Streaming Use Cases with Apache Kafka & Debezium](https://www.infoq.com/presentations/data-streaming-kafka-debezium/)
 
 An interesting article named [Reliable Microservices Data Exchange With the Outbox Pattern](https://debezium.io/blog/2019/02/19/reliable-microservices-data-exchange-with-the-outbox-pattern/)
