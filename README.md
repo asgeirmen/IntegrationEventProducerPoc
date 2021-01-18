@@ -52,6 +52,20 @@ GO
 ```
 This will generate following table-valued functions: `cdc.fn_cdc_get_all_changes_usr_transactions` and `cdc.fn_cdc_get_all_changes_usr_accounts`.
 
+## Configure poll interval
+The CDC job configuration on the database can be viewed by running following command:
+```SQL
+EXEC sys.sp_cdc_help_jobs;
+```
+As you probably see, the `pollinginterval` is set to 5 seconds, which means up 5 seconds delay. This should be reduced to 1 second or event 0 as follows:
+```SQL
+EXECUTE sys.sp_cdc_change_job   
+    @job_type = N'capture',  
+    @pollinginterval  = 0;
+```
+You will need to restart SQL Server Agent to activete those changes.
+
+
 ## Using CDC
 Following example selects a pointer reflecting the last captured row on the server:
 ```SQL
