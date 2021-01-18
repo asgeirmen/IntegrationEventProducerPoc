@@ -21,3 +21,34 @@ GO
 EXEC sys.sp_cdc_enable_db
 GO
 ```
+
+## Enabling CDC on a SQL Server table
+A SQL Server administrator must enable change data capture on the source tables that you want to capture. The database must already be enabled for CDC. To enable CDC on a table, 
+a SQL Server administrator runs the stored procedure sys.sp_cdc_enable_table for the table. The stored procedures can be run by using SQL Server Management Studio, or by using Transact-SQL.
+SQL Server CDC must be enabled for every table that you want to capture.
+
+Prerequisites
+* CDC is enabled on the SQL Server database.
+* The SQL Server Agent is running.
+* You are a member of the db_owner fixed database role for the database.
+
+The following example shows how to enable CDC for the table usr.transactions on database *Meniga*:
+
+```SQL
+USE Meniga
+GO
+EXEC sys.sp_cdc_enable_table
+@source_schema = N'usr',
+@source_name   = N'transactions', 
+@role_name     = N'public' // Use relevant database role
+@supports_net_changes = 0
+GO
+```
+
+## Using CDC
+Following example sets `last_lsn` to a pointer reflecting the last captured row on the server:
+```SQL
+SET @last_lsn   = sys.fn_cdc_get_max_lsn()
+```
+
+This pointer can be stored to be able to capture all changes happening after that. Changes after this can be selected as follows, assuming `usr.transactions` table.
