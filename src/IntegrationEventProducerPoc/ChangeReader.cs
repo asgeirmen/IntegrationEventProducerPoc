@@ -16,17 +16,15 @@ namespace IntegrationEventProducer
     {
         private string _connectionString;
         private List<string> _columns = null;
-        private byte[] _lastReadPosition;
-        public ChangeReader(IConfiguration iconfiguration)
-        {
-            _connectionString = iconfiguration.GetConnectionString("Default");
+        private byte[] _lastReadPosition = null;
+        private string _tableName;
+        private string _schemaName;
 
-            using (SqlConnection con = new SqlConnection(_connectionString))
-            {
-                con.Open();
-                SqlCommand cmd = new SqlCommand("select sys.fn_cdc_get_max_lsn()", con);
-                _lastReadPosition = (byte[])cmd.ExecuteScalar();
-            }
+        public ChangeReader(IConfiguration configuration, string schemaName, string tableName)
+        {
+            _connectionString = configuration.GetConnectionString("Default");
+            _schemaName = schemaName;
+            _tableName = tableName;
         }
 
 
@@ -38,14 +36,27 @@ namespace IntegrationEventProducer
             {
                 using (SqlConnection con = new SqlConnection(_connectionString))
                 {
-                    SqlCommand cmd = new SqlCommand("SELECT * FROM cdc.fn_cdc_get_all_changes_usr_transactions (@from_lsn, sys.fn_cdc_get_max_lsn(), N'all')", con);
+                    con.Open();
+                    if (_lastReadPosition == null)
+                    {
+                        try
+                        {
+                            var maxLsnCmd = new SqlCommand("select sys.fn_cdc_get_max_lsn()", con);
+                            _lastReadPosition = (byte[])maxLsnCmd.ExecuteScalar();
+                        }
+                        catch
+                        {
+                            return items;
+                        }
+                    }
+
+                    SqlCommand cmd = new SqlCommand("SELECT * FROM cdc.fn_cdc_get_all_changes_" + _schemaName +  "_" + _tableName + " (@from_lsn, sys.fn_cdc_get_max_lsn(), N'all')", con);
                     SqlParameter param = new SqlParameter();
                     param.ParameterName = "@from_lsn";
                     param.Value = _lastReadPosition;
                     cmd.Parameters.Add(param);
 
                     cmd.CommandType = CommandType.Text;
-                    con.Open();
                     SqlDataReader reader = await cmd.ExecuteReaderAsync();
                     var columns = GetColumns(reader);
                     byte[] newLastReadPosition = null;
@@ -61,15 +72,38 @@ namespace IntegrationEventProducer
 
                     if (newLastReadPosition != null)
                     {
+                        // This should only be updated after pesisting the results
                         _lastReadPosition = newLastReadPosition;
                     }
                 }
             }
             catch (Exception ex)
             {
-                throw ex;
+                Console.WriteLine(ex.Message);
             }
             return items;
+        }
+
+        private byte[] EnsureLastReadPosition()
+        {
+            if (_lastReadPosition == null)
+            {
+                try
+                {
+                    using (SqlConnection con = new SqlConnection(_connectionString))
+                    {
+                        con.Open();
+                        SqlCommand cmd = new SqlCommand("select sys.fn_cdc_get_max_lsn()", con);
+                        _lastReadPosition = (byte[])cmd.ExecuteScalar();
+                    }
+
+                }
+                catch 
+                {
+                }
+            }
+
+            return _lastReadPosition;
         }
 
         private List<string> GetColumns(SqlDataReader reader)
@@ -96,8 +130,7 @@ namespace IntegrationEventProducer
             SqlDataReader reader)
         {
             byte[] maskBytes = (byte[])reader["__$update_mask"];
-            byte[] updateMask8Bytes = new byte[] { maskBytes[5], maskBytes[4], maskBytes[3], maskBytes[2], maskBytes[1], maskBytes[0], 0, 0};
-            var mask = BitConverter.ToInt64(updateMask8Bytes);
+            var mask = BitConverter.ToInt64(To8Bytes(maskBytes));
 
             int operation = (int)reader["__$operation"];
             string type = TypeFromOperation(operation);
@@ -117,7 +150,7 @@ namespace IntegrationEventProducer
             }
 
             var integrationEvent = new Dictionary<string, object>();
-            integrationEvent.Add("type", "transaction_" + type);
+            integrationEvent.Add("type", _tableName + "_" + type);
             integrationEvent.Add("timestamp", DateTime.Now);
             if (type == "update")
             {
@@ -142,6 +175,22 @@ namespace IntegrationEventProducer
                     throw new Exception("Invalid operation: " + operation);
             }
 
+        }
+
+        private byte[] To8Bytes(byte[] bytes)
+        {
+            byte[] update8Bytes = new byte[8];
+            for (int ind = 0; ind < bytes.Length; ind++)
+            {
+                update8Bytes[ind] = bytes[bytes.Length - ind - 1];
+            }
+
+            for (int ind = bytes.Length; ind < update8Bytes.Length; ind++)
+            {
+                update8Bytes[ind] = 0;
+            }
+
+            return update8Bytes;
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Threading.Tasks;
@@ -12,7 +13,18 @@ namespace IntegrationEventProducer
         static async Task Main(string[] args)
         {
             GetAppSettingsFile();
-            await PublishChangeEvents();
+
+            var captureTables = _configuration["CaptureTables"];
+            var captureTableList = captureTables.Split(",", StringSplitOptions.RemoveEmptyEntries);
+
+            var publishTasks = new List<Task>();
+
+            foreach (var table in captureTableList)
+            {
+                publishTasks.Add(PublishChangeEvents(table));
+            }
+
+            Task.WaitAll(publishTasks.ToArray());
         }
         static void GetAppSettingsFile()
         {
@@ -21,9 +33,10 @@ namespace IntegrationEventProducer
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
             _configuration = builder.Build();
         }
-        static async Task PublishChangeEvents()
+        static async Task PublishChangeEvents(string captureTable)
         {
-            var reader = new ChangeReader(_configuration);
+            var captureSchemaAndTable = captureTable.Trim().Split(".");
+            var reader = new ChangeReader(_configuration, captureSchemaAndTable[0], captureSchemaAndTable[1]);
             while (true)
             {
                 var events = await reader.GetList();
@@ -37,7 +50,7 @@ namespace IntegrationEventProducer
                 }
                 else
                 {
-                    Console.Write('.');
+                    Console.Write(captureSchemaAndTable[1].Substring(0, 1));
                 }
 
                 await Task.Delay(100);
