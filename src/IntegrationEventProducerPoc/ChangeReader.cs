@@ -17,6 +17,7 @@ namespace IntegrationEventProducer
         private string _connectionString;
         private List<string> _columns = null;
         private byte[] _lastReadPosition = null;
+        private byte[] _nextReadPosition = null;
         private string _tableName;
         private string _schemaName;
 
@@ -59,22 +60,17 @@ namespace IntegrationEventProducer
                     cmd.CommandType = CommandType.Text;
                     SqlDataReader reader = await cmd.ExecuteReaderAsync();
                     var columns = GetColumns(reader);
-                    byte[] newLastReadPosition = null;
+                    _nextReadPosition = null;
                     while (reader.Read())
                     {
-                        newLastReadPosition = (byte[])reader["__$start_lsn"];
-                        if (!StructuralComparisons.StructuralEqualityComparer.Equals(newLastReadPosition, _lastReadPosition))
+                        _nextReadPosition = (byte[])reader["__$start_lsn"];
+                        if (!StructuralComparisons.StructuralEqualityComparer.Equals(_nextReadPosition, _lastReadPosition))
                         {
                             var row = SerializeRow(columns, reader);
                             items.Add(JsonConvert.SerializeObject(row, Formatting.None));
                         }
                     }
 
-                    if (newLastReadPosition != null)
-                    {
-                        // This should only be updated after pesisting the results
-                        _lastReadPosition = newLastReadPosition;
-                    }
                 }
             }
             catch (Exception ex)
@@ -82,6 +78,15 @@ namespace IntegrationEventProducer
                 Console.WriteLine(ex.Message);
             }
             return items;
+        }
+
+        public void ApplyNextReadPosition()
+        {
+            if (_nextReadPosition != null)
+            {
+                // This should be persisted to survive crashes
+                _lastReadPosition = _nextReadPosition;
+            }
         }
 
         private byte[] EnsureLastReadPosition()

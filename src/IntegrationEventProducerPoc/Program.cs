@@ -10,7 +10,7 @@ namespace IntegrationEventProducer
     class Program
     {
         private static IConfiguration _configuration;
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             GetAppSettingsFile();
 
@@ -47,6 +47,9 @@ namespace IntegrationEventProducer
                     {
                         Console.WriteLine(ev);
                     }
+
+                    // This should be called after commiting the messages successfully to the queue
+                    reader.ApplyNextReadPosition();
                 }
                 else
                 {
