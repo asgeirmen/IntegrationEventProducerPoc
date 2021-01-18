@@ -1,0 +1,147 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Xml;
+using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json;
+using Formatting = Newtonsoft.Json.Formatting;
+
+namespace IntegrationEventProducer
+{
+    public class ChangeReader
+    {
+        private string _connectionString;
+        private List<string> _columns = null;
+        private byte[] _lastReadPosition;
+        public ChangeReader(IConfiguration iconfiguration)
+        {
+            _connectionString = iconfiguration.GetConnectionString("Default");
+
+            using (SqlConnection con = new SqlConnection(_connectionString))
+            {
+                con.Open();
+                SqlCommand cmd = new SqlCommand("select sys.fn_cdc_get_max_lsn()", con);
+                _lastReadPosition = (byte[])cmd.ExecuteScalar();
+            }
+        }
+
+
+        public async Task<List<string>> GetList()
+        {
+
+            List<string> items = new List<string>();
+            try
+            {
+                using (SqlConnection con = new SqlConnection(_connectionString))
+                {
+                    SqlCommand cmd = new SqlCommand("SELECT * FROM cdc.fn_cdc_get_all_changes_usr_transactions (@from_lsn, sys.fn_cdc_get_max_lsn(), N'all')", con);
+                    SqlParameter param = new SqlParameter();
+                    param.ParameterName = "@from_lsn";
+                    param.Value = _lastReadPosition;
+                    cmd.Parameters.Add(param);
+
+                    cmd.CommandType = CommandType.Text;
+                    con.Open();
+                    SqlDataReader reader = await cmd.ExecuteReaderAsync();
+                    var columns = GetColumns(reader);
+                    byte[] newLastReadPosition = null;
+                    while (reader.Read())
+                    {
+                        newLastReadPosition = (byte[])reader["__$start_lsn"];
+                        if (!StructuralComparisons.StructuralEqualityComparer.Equals(newLastReadPosition, _lastReadPosition))
+                        {
+                            var row = SerializeRow(columns, reader);
+                            items.Add(JsonConvert.SerializeObject(row, Formatting.None));
+                        }
+                    }
+
+                    if (newLastReadPosition != null)
+                    {
+                        _lastReadPosition = newLastReadPosition;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            return items;
+        }
+
+        private List<string> GetColumns(SqlDataReader reader)
+        {
+            if (_columns == null)
+            {
+                var cols = new List<string>();
+                for (var i = 0; i < reader.FieldCount; i++)
+                {
+                    string name = reader.GetName(i);
+                    if (!name.StartsWith("__$"))
+                    {
+                        cols.Add(reader.GetName(i));
+                    }
+                }
+
+                _columns = cols;
+            }
+
+            return _columns;
+        }
+
+        private Dictionary<string, object> SerializeRow(List<string> cols,
+            SqlDataReader reader)
+        {
+            byte[] maskBytes = (byte[])reader["__$update_mask"];
+            byte[] updateMask8Bytes = new byte[] { maskBytes[5], maskBytes[4], maskBytes[3], maskBytes[2], maskBytes[1], maskBytes[0], 0, 0};
+            var mask = BitConverter.ToInt64(updateMask8Bytes);
+
+            int operation = (int)reader["__$operation"];
+            string type = TypeFromOperation(operation);
+            var result = new Dictionary<string, object>();
+            long colMaskValue = 1;
+            List<string> updatedFields = new List<string>();
+            for (int ind = 0; ind < cols.Count; ind++)
+            {
+                var col = cols[ind];
+                if (type == "update" && (colMaskValue & mask) > 0)
+                {
+                    updatedFields.Add(col);
+                }
+                result.Add(col, reader[col]);
+
+                colMaskValue *= 2;
+            }
+
+            var integrationEvent = new Dictionary<string, object>();
+            integrationEvent.Add("type", "transaction_" + type);
+            integrationEvent.Add("timestamp", DateTime.Now);
+            if (type == "update")
+            {
+                integrationEvent.Add("updatedFields", updatedFields);
+            }
+            integrationEvent.Add("data", result);
+
+            return integrationEvent;
+        }
+
+        private string TypeFromOperation(int operation)
+        {
+            switch (operation)
+            {
+                case 1:
+                    return "delete";
+                case 2:
+                    return "insert";
+                case 4:
+                    return "update";
+                default:
+                    throw new Exception("Invalid operation: " + operation);
+            }
+
+        }
+    }
+}
