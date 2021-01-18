@@ -12,7 +12,7 @@ Prerequisites
 * You are a db_owner of the database.
 * The SQL Server Agent is running.
 
-Run the stored procedure sys.sp_cdc_enable_db to enable the database for CDC. After the database is enabled for CDC, a schema with the name cdc is created, along with a CDC user, metadata tables, and other system objects.
+Run the stored procedure `sys.sp_cdc_enable_db` to enable the database for CDC. After the database is enabled for CDC, a schema with the name cdc is created, along with a CDC user, metadata tables, and other system objects.
 
 The following example shows how to enable CDC for the database Meniga:
 ```sql
@@ -24,7 +24,7 @@ GO
 
 ## Enabling CDC on a SQL Server table
 A SQL Server administrator must enable change data capture on the source tables that you want to capture. The database must already be enabled for CDC. To enable CDC on a table, 
-a SQL Server administrator runs the stored procedure sys.sp_cdc_enable_table for the table. The stored procedures can be run by using SQL Server Management Studio, or by using Transact-SQL.
+a SQL Server administrator runs the stored procedure `sys.sp_cdc_enable_table` for the table. The stored procedures can be run by using SQL Server Management Studio, or by using Transact-SQL.
 SQL Server CDC must be enabled for every table that you want to capture.
 
 Prerequisites
@@ -32,7 +32,7 @@ Prerequisites
 * The SQL Server Agent is running.
 * You are a member of the db_owner fixed database role for the database.
 
-The following example shows how to enable CDC for `usr.transactions` and `usr.accounts` tables on database *Meniga*:
+The following example shows how to enable CDC for `usr.transactions` and `usr.accounts` tables on database `Meniga`:
 
 ```SQL
 USE Meniga
@@ -57,7 +57,7 @@ The CDC job configuration on the database can be viewed by running following com
 ```SQL
 EXEC sys.sp_cdc_help_jobs;
 ```
-As you probably see, the `pollinginterval` is set to 5 seconds, which means up 5 seconds delay. This should be reduced to 1 second or event 0 as follows:
+As you probably see, the `pollinginterval` is set to 5 seconds, which means up 5 seconds delay. This should be reduced to 1 second or even 0 as follows:
 ```SQL
 EXECUTE sys.sp_cdc_change_job   
     @job_type = N'capture',  
@@ -81,7 +81,7 @@ SELECT * FROM cdc.fn_cdc_get_all_changes_usr_transactions(0x0000161100000A200001
 The results from this query is a table with the same columns as `usr.transactions` but has 4 additional colums as described [here](https://docs.microsoft.com/en-us/sql/relational-databases/system-functions/cdc-fn-cdc-get-all-changes-capture-instance-transact-sql?view=sql-server-ver15).
 The `__$start_lsn` column for the last raw can be used as the from pointer in the next call to `cdc.fn_cdc_get_all_changes_usr_transactions`.
 
-## Customer events, Debezium and Outbox pattern
+## Custom events, Debezium and Outbox pattern
 Debezium is an open source distributed platform for change data capture, built on top of Apache Kafka. It has a [connector for SQL server](https://debezium.io/documentation/reference/1.4/connectors/sqlserver.html)
 that makes use of CDC in a similar way as this POC. I recommend this video to understand Debezium: 
 [Practical Change Data Streaming Use Cases with Apache Kafka & Debezium](https://www.infoq.com/presentations/data-streaming-kafka-debezium/)
